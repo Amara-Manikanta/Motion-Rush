@@ -1,0 +1,20 @@
+# Phase 1 -- game only
+pygame>=2.6,<3
+numpy>=1.24
+
+# Phase 2 -- webcam body tracking
+#
+# mediapipe is pinned below 1.0: the 1.x macOS arm64 build crashes on start-up
+# in TensorsToDetectionsCalculator::Open() trying to init a Metal helper
+# ("Check failed: service_ Service is unavailable"), with or without the CPU
+# delegate. 0.10.35 runs the same Tasks API cleanly at ~7ms/frame.
+#
+# Note: mediapipe.solutions.pose no longer exists in ANY current release --
+# use the Tasks API (vision.PoseLandmarker), as vision/pose_tracker.py does.
+mediapipe>=0.10.30,<1.0
+
+# Headless 4.x specifically: the non-headless and 5.x wheels bundle their own
+# libSDL2 (via FFmpeg's libavdevice) which collides with pygame's SDL and
+# prints "may cause ... mysterious crashes" duplicate-class warnings.
+# Install with --no-deps if pip tries to pull the non-headless build back in.
+opencv-contrib-python-headless>=4.8,<5
