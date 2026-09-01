@@ -10,6 +10,7 @@ import pygame
 
 import config as C
 from game.collectible import DataOrb
+from game.obstacle import ObstacleKind
 from game.player import Player, PlayerState
 from game.renderer import Camera, NeonPainter, build_background
 from game.spawner import Spawner
@@ -268,6 +269,8 @@ class GameManager:
 
         for ob in self.spawner.obstacles:
             if ob.active and aabb_overlap(box, ob.bounds()):
+                if self._forgiven(ob):
+                    continue
                 # Recorded for the debug overlay and the headless diagnostics.
                 self.last_hit = (ob.kind, round(ob.lane_pos, 2), round(ob.z, 2),
                                  round(self.player.lane_visual, 2),
@@ -278,6 +281,19 @@ class GameManager:
                 self.death_timer = DEATH_FREEZE
                 self._end_run()
                 return
+
+    def _forgiven(self, ob) -> bool:
+        """Was the right gesture made, just fractionally too late?
+
+        Only timed obstacles qualify: a barrier has no 'correct moment', so
+        forgiving one would simply delete the obstacle.
+        """
+        p = self.player
+        if ob.kind is ObstacleKind.LASER_BEAM:
+            return p.since_jump_request <= C.LATE_GRACE
+        if ob.kind is ObstacleKind.FORCE_FIELD:
+            return p.since_duck_request <= C.LATE_GRACE
+        return False
 
     # -- draw ---------------------------------------------------------------
 

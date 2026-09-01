@@ -64,9 +64,10 @@ PLAYER_DEPTH = 0.80
 PLAYER_STAND_H = 1.80
 PLAYER_DUCK_H = 0.90
 GRAVITY = 15.0               # world units / s^2   (set by apply_mode)
-JUMP_VELOCITY = 7.6          # -> apex ~1.93 units, ~1.01s airtime
+JUMP_VELOCITY = 9.2          # -> apex ~2.82 units, ~1.23s airtime
 DUCK_DURATION = 0.85
 COYOTE_TIME = 0.08           # grace period for a late jump input
+LATE_GRACE = 0.20            # a gesture landing this late still clears
 
 # --------------------------------------------------------------------------
 # Speed / difficulty curve
@@ -89,13 +90,16 @@ MODES = {
         spawn_gap_min=24.0,      # ~1.5s between groups at top speed
         spawn_gap_decay=0.10,
         first_gap=44.0,
-        # Floatier jump and a longer crouch. What matters for a laggy input is
-        # not jump *height* but how long you stay clear of the beam: lower
-        # gravity widens the window from 0.60s to 0.81s without changing what
-        # the player has to do.
+        # A laggy input needs BOTH: a strong launch so the body clears the
+        # beam quickly after a late trigger, and low gravity so it stays clear
+        # for a long time. Lowering jump velocity to get float was a mistake --
+        # it delayed the moment of clearing, which is what actually kills you.
         gravity=15.0,
-        jump_velocity=7.6,
+        jump_velocity=9.2,
         duck_duration=0.85,
+        # Known input latency deserves explicit forgiveness: a gesture that
+        # lands just after the obstacle still counts.
+        late_grace=0.20,
     ),
     "classic": dict(
         base_speed=14.0,
@@ -108,6 +112,7 @@ MODES = {
         gravity=22.0,
         jump_velocity=8.6,
         duck_duration=0.55,
+        late_grace=0.08,
     ),
 }
 
@@ -127,7 +132,7 @@ def apply_mode(name: str):
     """Switch the active pacing profile. Consumers read these at runtime."""
     global ACTIVE_MODE, BASE_SPEED, SPEED_ACCEL, MAX_SPEED
     global SPAWN_GAP_START, SPAWN_GAP_MIN, SPAWN_GAP_DECAY, FIRST_GAP
-    global GRAVITY, JUMP_VELOCITY, DUCK_DURATION
+    global GRAVITY, JUMP_VELOCITY, DUCK_DURATION, LATE_GRACE
     if name not in MODES:
         raise ValueError(f"unknown mode {name!r}; expected one of {sorted(MODES)}")
     m = MODES[name]
@@ -142,6 +147,7 @@ def apply_mode(name: str):
     GRAVITY = m["gravity"]
     JUMP_VELOCITY = m["jump_velocity"]
     DUCK_DURATION = m["duck_duration"]
+    LATE_GRACE = m["late_grace"]
 
 
 def seconds_between_groups(speed=None) -> float:

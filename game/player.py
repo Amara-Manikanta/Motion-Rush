@@ -28,6 +28,11 @@ class Player:
         self.run_phase = 0.0
         self.time_since_grounded = 0.0
         self.hit_flash = 0.0
+        # Time since the player last *asked* for these, whether or not the
+        # action was possible. Used to forgive an input that lands slightly
+        # late, which is what input latency produces.
+        self.since_jump_request = 99.0
+        self.since_duck_request = 99.0
 
     # -- queries ------------------------------------------------------------
 
@@ -65,6 +70,7 @@ class Player:
     def jump(self):
         if self.state is PlayerState.DEAD:
             return
+        self.since_jump_request = 0.0
         # Coyote time keeps a slightly-late jump from being swallowed, which
         # matters a lot when the input source is a camera rather than a key.
         if self.on_ground or self.time_since_grounded <= C.COYOTE_TIME:
@@ -76,6 +82,7 @@ class Player:
     def duck(self):
         if self.state is PlayerState.DEAD:
             return
+        self.since_duck_request = 0.0
         if self.on_ground:
             self.state = PlayerState.DUCKING
             self.duck_timer = C.DUCK_DURATION
@@ -91,6 +98,8 @@ class Player:
 
     def update(self, dt: float, speed: float):
         self.hit_flash = max(0.0, self.hit_flash - dt)
+        self.since_jump_request += dt
+        self.since_duck_request += dt
         if self.state is PlayerState.DEAD:
             # Fall through the floor a little for a bit of death feedback.
             self.vy -= C.GRAVITY * dt

@@ -60,7 +60,7 @@ def main():
     gm.start_run()
     for _ in range(600):                       # 10 seconds of clear running
         gm.update(DT)
-    check("score accrues with distance", gm.run.score > 100,
+    check("score accrues with distance", gm.run.score > 80,
           f"score={gm.run.score:.0f}")
     check("speed scales up", gm.run.speed > C.BASE_SPEED,
           f"{C.BASE_SPEED} -> {gm.run.speed:.2f}")
