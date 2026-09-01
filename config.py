@@ -68,6 +68,8 @@ JUMP_VELOCITY = 9.2          # -> apex ~2.82 units, ~1.23s airtime
 DUCK_DURATION = 0.85
 COYOTE_TIME = 0.08           # grace period for a late jump input
 LATE_GRACE = 0.20            # a gesture landing this late still clears
+LIVES = 3                    # hits before the run actually ends
+STUMBLE_INVULN = 1.5         # seconds of invulnerability after a stumble
 
 # --------------------------------------------------------------------------
 # Speed / difficulty curve
@@ -100,6 +102,10 @@ MODES = {
         # Known input latency deserves explicit forgiveness: a gesture that
         # lands just after the obstacle still counts.
         late_grace=0.20,
+        # A workout should not stop dead every time you clip something. A hit
+        # costs speed and a stumble, not the run.
+        lives=3,
+        stumble_invuln=1.5,
     ),
     "classic": dict(
         base_speed=14.0,
@@ -113,6 +119,8 @@ MODES = {
         jump_velocity=8.6,
         duck_duration=0.55,
         late_grace=0.08,
+        lives=1,
+        stumble_invuln=0.0,
     ),
 }
 
@@ -133,6 +141,7 @@ def apply_mode(name: str):
     global ACTIVE_MODE, BASE_SPEED, SPEED_ACCEL, MAX_SPEED
     global SPAWN_GAP_START, SPAWN_GAP_MIN, SPAWN_GAP_DECAY, FIRST_GAP
     global GRAVITY, JUMP_VELOCITY, DUCK_DURATION, LATE_GRACE
+    global LIVES, STUMBLE_INVULN
     if name not in MODES:
         raise ValueError(f"unknown mode {name!r}; expected one of {sorted(MODES)}")
     m = MODES[name]
@@ -148,6 +157,8 @@ def apply_mode(name: str):
     JUMP_VELOCITY = m["jump_velocity"]
     DUCK_DURATION = m["duck_duration"]
     LATE_GRACE = m["late_grace"]
+    LIVES = m["lives"]
+    STUMBLE_INVULN = m["stumble_invuln"]
 
 
 def seconds_between_groups(speed=None) -> float:

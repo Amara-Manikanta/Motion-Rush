@@ -42,6 +42,8 @@ class RunState:
     distance: float = 0.0
     speed: float = 0.0
     elapsed: float = 0.0
+    lives: int = 1
+    stumbles: int = 0
     next_milestone: int = MILESTONE_STEP
 
 
@@ -115,6 +117,7 @@ class GameManager:
         self.spawner.reset()
         self.run = RunState()
         self.run.speed = C.BASE_SPEED
+        self.run.lives = C.LIVES
         self.is_best = False
         self.death_timer = 0.0
         self.shake = 0.0
@@ -267,10 +270,23 @@ class GameManager:
                 self.run.score += C.ORB_VALUE
                 self.sound.play("orb")
 
+        if self.player.invuln > 0.0:
+            return                      # recovering from a stumble
+
         for ob in self.spawner.obstacles:
             if ob.active and aabb_overlap(box, ob.bounds()):
                 if self._forgiven(ob):
                     continue
+                if self.run.lives > 1:
+                    # A stumble: lose the speed you had built up, not the run.
+                    self.run.lives -= 1
+                    self.run.stumbles += 1
+                    self.run.elapsed = max(0.0, self.run.elapsed * 0.45)
+                    self.player.stumble(C.STUMBLE_INVULN)
+                    ob.active = False
+                    self.sound.play("hit")
+                    self.shake = 0.7
+                    return
                 # Recorded for the debug overlay and the headless diagnostics.
                 self.last_hit = (ob.kind, round(ob.lane_pos, 2), round(ob.z, 2),
                                  round(self.player.lane_visual, 2),

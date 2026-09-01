@@ -72,15 +72,32 @@ def main():
     ob = gm.spawner.obstacles[0]
     from game.obstacle import ObstacleKind
     ob.spawn(ObstacleKind.ENERGY_BARRIER, gm.player.lane, C.PLAYER_Z)
+    gm.run.lives = 1                       # test the fatal case directly
     gm.update(DT)
     check("barrier in player's lane is fatal", gm.state is State.GAME_OVER)
     check("player marked dead", gm.player.state.value == "dead")
+
+    print("\n2b. spare lives turn a hit into a stumble")
+    gm = new_game(); gm.start_run()
+    if C.LIVES > 1:
+        before = gm.run.lives
+        gm.spawner.obstacles[0].spawn(ObstacleKind.ENERGY_BARRIER,
+                                      gm.player.lane, C.PLAYER_Z)
+        gm.update(DT)
+        check("run continues on first hit", gm.state is State.PLAYING)
+        check("a life is spent", gm.run.lives == before - 1)
+        check("stumble recorded", gm.run.stumbles == 1)
+        check("brief invulnerability granted", gm.player.invuln > 0.0)
+    else:
+        check("single-life mode: nothing to check", True)
 
     print("\n3. jumping clears a laser, standing does not")
     for jumping in (True, False):
         gm = new_game(); gm.start_run()
         ob = gm.spawner.obstacles[0]
         ob.spawn(ObstacleKind.LASER_BEAM, gm.player.lane, C.PLAYER_Z)
+        gm.run.lives = 1
+        gm.player.since_jump_request = 99.0     # exclude late-input grace
         if jumping:
             gm.player.jump()
             for _ in range(14):
@@ -95,8 +112,11 @@ def main():
         gm = new_game(); gm.start_run()
         ob = gm.spawner.obstacles[0]
         ob.spawn(ObstacleKind.FORCE_FIELD, gm.player.lane, C.PLAYER_Z)
+        gm.run.lives = 1
         if ducking:
             gm.player.duck()
+        else:
+            gm.player.since_duck_request = 99.0  # exclude late-input grace
         gm._resolve_collisions()
         died = gm.state is State.GAME_OVER
         check(f"force field while {'ducking' if ducking else 'standing'}",

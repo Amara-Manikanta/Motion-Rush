@@ -28,6 +28,21 @@ class HUD:
                   topleft=(28, 62))
 
         self._speed_bar(surface, glow, state.speed)
+        if C.LIVES > 1:
+            self._lives(surface, glow, state)
+
+    def _lives(self, surface, glow, state):
+        t = self.theme
+        x, y = 30, 130
+        draw_text(surface, "LIVES", 13, t["text_dim"], topleft=(x, y + 16))
+        for i in range(C.LIVES):
+            cx = x + 8 + i * 22
+            alive = i < state.lives
+            col = t["player"] if alive else (58, 44, 88)
+            pygame.draw.circle(surface, col, (cx, y + 6), 7)
+            if alive:
+                pygame.draw.circle(glow, (*[c // 2 for c in col], 110),
+                                   (cx, y + 6), 11)
 
     def _speed_bar(self, surface, glow, speed):
         t = self.theme

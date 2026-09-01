@@ -33,6 +33,7 @@ class Player:
         # late, which is what input latency produces.
         self.since_jump_request = 99.0
         self.since_duck_request = 99.0
+        self.invuln = 0.0
 
     # -- queries ------------------------------------------------------------
 
@@ -94,12 +95,21 @@ class Player:
         self.state = PlayerState.DEAD
         self.hit_flash = 0.45
 
+    def stumble(self, invuln: float):
+        """Take a hit without ending the run."""
+        self.hit_flash = 0.45
+        self.invuln = invuln
+        if self.state is PlayerState.DUCKING:
+            self.state = PlayerState.RUNNING
+            self.duck_timer = 0.0
+
     # -- update -------------------------------------------------------------
 
     def update(self, dt: float, speed: float):
         self.hit_flash = max(0.0, self.hit_flash - dt)
         self.since_jump_request += dt
         self.since_duck_request += dt
+        self.invuln = max(0.0, self.invuln - dt)
         if self.state is PlayerState.DEAD:
             # Fall through the floor a little for a bit of death feedback.
             self.vy -= C.GRAVITY * dt
@@ -143,6 +153,8 @@ class Player:
     # -- drawing ------------------------------------------------------------
 
     def draw(self, painter, theme):
+        if self.invuln > 0.0 and int(self.invuln * 12) % 2 == 0:
+            return                      # blink while recovering from a stumble
         col = theme["danger"] if self.hit_flash > 0 else theme["player"]
         dark = theme["player_dark"]
         x = self.world_x

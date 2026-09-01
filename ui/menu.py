@@ -84,6 +84,8 @@ class Menu:
             ("ORBS", f"{state.orbs}"),
             ("TOP SPEED", f"{state.speed:.1f}"),
         ]
+        if C.LIVES > 1:
+            stats.append(("STUMBLES", f"{state.stumbles}"))
         y = 412
         for label, value in stats:
             draw_text(surface, label, 18, t["text_dim"], topright=(cx - 20, y))
