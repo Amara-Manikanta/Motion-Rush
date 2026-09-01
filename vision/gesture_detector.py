@@ -17,6 +17,7 @@ Four things keep this fast without making it twitchy:
   than entering it, and jump/duck must return toward neutral before re-firing.
 """
 
+import math
 from dataclasses import dataclass
 
 from vision.pose_tracker import L_SHOULDER, R_SHOULDER, L_HIP, R_HIP
@@ -49,6 +50,23 @@ DUCK_VEL_GATE = 0.50
 # the raw motion had.
 VEL_SMOOTH = 0.55
 
+# --- Posture baseline -------------------------------------------------------
+# Gestures are measured against a slowly-adapting baseline, not the frozen
+# neutral captured during calibration. Real sessions drift: the player stands
+# further back, shifts weight, or simply held a different posture while being
+# calibrated. A frozen neutral turns that drift into a permanent offset -- and
+# once the offset exceeds the duck threshold the detector latches into "down"
+# and jump, which is only tested from neutral, can never fire again.
+BASELINE_TAU = 2.5         # seconds; how fast the resting posture is relearned
+BASELINE_QUIET_VEL = 0.60  # only relearn while the body is roughly still
+STUCK_TIME = 2.5           # holding a gesture this long re-baselines instead
+STUCK_VEL = 0.35
+
+# Frames whose normalised values are physically implausible are dropped: they
+# come from a mis-detected shoulder pair and would otherwise poison both the
+# baseline and the velocity estimate.
+MAX_PLAUSIBLE_OFFSET = 3.0
+
 # Rising fast from below neutral is also exactly what standing up out of a
 # crouch looks like, so leaving a vertical gesture arms a short lockout.
 POST_GESTURE_LOCK = 0.34
@@ -60,8 +78,9 @@ class GestureState:
     jump: bool = False         # edge-triggered this frame
     duck: bool = False         # edge-triggered this frame
     tracked: bool = False      # is a body visible at all
-    lean: float = 0.0          # smoothed sideways offset, shoulder-widths
-    rise: float = 0.0          # smoothed vertical offset, + is up
+    lean: float = 0.0          # smoothed sideways offset from baseline
+    rise: float = 0.0          # smoothed vertical offset from baseline, + is up
+    base_rise: float = 0.0     # current resting posture, for diagnostics
     rise_vel: float = 0.0      # vertical speed, shoulder-widths per second
     raw_zone: int = 0          # pre-debounce, for the debug overlay
 
@@ -78,6 +97,12 @@ class GestureDetector:
         self._rise_vel = 0.0
         self._prev_raw_rise = None
         self._last_ts = None
+        # Seeded from calibration (zero offset), not from the first frame a
+        # camera happens to deliver -- a player who is mid-lean at start-up
+        # would otherwise have that pose adopted as their neutral.
+        self._base_rise = 0.0
+        self._base_lean = 0.0
+        self._mode_time = 0.0
         self._primed = False
         self.zone = 0
         self._candidate = 0
@@ -123,6 +148,52 @@ class GestureDetector:
         lean = (mx - p.neutral_x) / width
         rise = (p.neutral_y - my) / width       # image y grows downward
 
+        if (abs(lean) > MAX_PLAUSIBLE_OFFSET
+                or abs(rise) > MAX_PLAUSIBLE_OFFSET):
+            # Garbage landmarks -- hold the previous state rather than trust it.
+            self.state = GestureState(lane_zone=self.zone, tracked=False,
+                                      lean=self._lean, rise=self._rise,
+                                      rise_vel=self._rise_vel,
+                                      base_rise=self._base_rise)
+            return self.state
+
+        # Relearn the resting posture. Two paths:
+        #
+        #  * slow drift correction while the body is still and near baseline;
+        #  * a hard re-seat when a vertical gesture has been "held" so long
+        #    that it is plainly the player's new posture rather than a gesture.
+        #    The hard reset matters: easing toward the pose would leave the
+        #    offset above threshold and immediately re-fire the same gesture.
+        self._mode_time += cam_dt
+        stuck = (self._vertical_mode != "neutral"
+                 and self._mode_time > STUCK_TIME
+                 and abs(self._rise_vel) < STUCK_VEL)
+        if stuck:
+            self._vertical_mode = "neutral"
+            self._mode_time = 0.0
+            self._base_rise = rise
+            self._refractory = max(self._refractory, POST_GESTURE_LOCK)
+
+        # Stillness is the discriminator, not proximity: a deliberate gesture
+        # always carries velocity, whereas a wrongly-calibrated posture sits
+        # motionless. Gating on proximity too would have left a large offset
+        # permanently uncorrectable -- exactly the case that broke jumping.
+        quiet = abs(self._rise_vel) < BASELINE_QUIET_VEL
+        if self._vertical_mode == "neutral" and quiet:
+            a = 1.0 - math.exp(-cam_dt / BASELINE_TAU)
+            self._base_rise += (rise - self._base_rise) * a
+
+        # The lean baseline may only drift while the player is centred and
+        # inside the deadzone. Lane control is positional -- absorbing a held
+        # lean would quietly slide the player back out of the lane they chose.
+        if (self.zone == 0
+                and abs(lean - self._base_lean) < p.lean_threshold * EXIT_RATIO):
+            a = 1.0 - math.exp(-cam_dt / BASELINE_TAU)
+            self._base_lean += (lean - self._base_lean) * a
+
+        lean -= self._base_lean
+        rise -= self._base_rise
+
         # Adaptive EMA on the normalised signals (not the raw landmarks, so one
         # jittery joint cannot drag the result). Alpha opens up with speed.
         if not self._primed:
@@ -141,6 +212,7 @@ class GestureDetector:
         self.state = GestureState(lane_zone=zone, jump=jump, duck=duck,
                                   tracked=True, lean=self._lean,
                                   rise=self._rise, rise_vel=self._rise_vel,
+                                  base_rise=self._base_rise,
                                   raw_zone=self._candidate)
         return self.state
 
@@ -191,10 +263,12 @@ class GestureDetector:
         if self._vertical_mode == "up":
             if self._rise < p.jump_threshold * RELEASE_RATIO:
                 self._vertical_mode = "neutral"
+                self._mode_time = 0.0
                 self._refractory = max(self._refractory, POST_GESTURE_LOCK)
         elif self._vertical_mode == "down":
             if self._rise > -p.duck_threshold * RELEASE_RATIO:
                 self._vertical_mode = "neutral"
+                self._mode_time = 0.0
                 self._refractory = max(self._refractory, POST_GESTURE_LOCK)
         else:
             if self._refractory <= 0.0:
@@ -210,10 +284,12 @@ class GestureDetector:
                 if jump_now:
                     jump = True
                     self._vertical_mode = "up"
+                    self._mode_time = 0.0
                     self._refractory = REFRACTORY
                 elif duck_now:
                     duck = True
                     self._vertical_mode = "down"
+                    self._mode_time = 0.0
                     self._refractory = REFRACTORY
 
         return jump, duck

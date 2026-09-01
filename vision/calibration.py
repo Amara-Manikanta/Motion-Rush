@@ -21,11 +21,16 @@ class CalibrationProfile:
     jump_threshold: float = 0.26      # shoulder-widths up to trigger a jump
     duck_threshold: float = 0.38      # shoulder-widths down to trigger a duck
     calibrated: bool = False
+    weak: bool = False                # the player barely moved; thresholds
+                                      # fell back to their floors
 
     def describe(self):
+        tag = "" if self.calibrated else "  (defaults)"
+        if self.weak:
+            tag = "  (WEAK - movements were small)"
         return (f"lean {self.lean_threshold:.2f}  "
                 f"jump {self.jump_threshold:.2f}  duck {self.duck_threshold:.2f}"
-                + ("" if self.calibrated else "  (defaults)"))
+                + tag)
 
 
 class Step(Enum):
@@ -58,6 +63,7 @@ class Calibrator:
         self.elapsed = 0.0
         self.samples = {s: [] for s in ORDER}
         self.profile = CalibrationProfile()
+        self.weak_steps = []
         self._failed = False
 
     # -- state --------------------------------------------------------------
@@ -119,12 +125,14 @@ class Calibrator:
 
     @staticmethod
     def _mean(rows):
+        """Median, not mean -- a couple of mis-detected frames would otherwise
+        drag a whole step's average and silently distort the profile."""
         if not rows:
             return None
-        n = len(rows)
-        return (sum(r[0] for r in rows) / n,
-                sum(r[1] for r in rows) / n,
-                sum(r[2] for r in rows) / n)
+        import statistics
+        return (statistics.median(r[0] for r in rows),
+                statistics.median(r[1] for r in rows),
+                statistics.median(r[2] for r in rows))
 
     def _build_profile(self):
         neutral = self._mean(self.samples[Step.NEUTRAL])
@@ -138,25 +146,41 @@ class Calibrator:
 
         # Sideways range: use whichever direction the player committed to less,
         # so the easier side doesn't set an unreachable threshold on the other.
+        weak = []
         spans = []
         for step in (Step.LEFT, Step.RIGHT):
             m = self._mean(self.samples[step])
             if m is not None:
                 spans.append(abs(m[0] - nx) / nw)
         if spans:
-            p.lean_threshold = max(0.16, min(spans) * TRIGGER_FRACTION)
+            raw = min(spans) * TRIGGER_FRACTION
+            p.lean_threshold = max(0.16, raw)
+            if raw < 0.16:
+                weak.append("lean")
 
         up = self._mean(self.samples[Step.JUMP])
         if up is not None:
             # Image y grows downward, so a jump makes it smaller.
             rise = max(0.0, (ny - up[1]) / nw)
             if rise > 0.05:
-                p.jump_threshold = max(0.10, rise * TRIGGER_FRACTION)
+                raw = rise * TRIGGER_FRACTION
+                p.jump_threshold = max(0.10, raw)
+                if raw < 0.10:
+                    weak.append("jump")
+            else:
+                weak.append("jump")
 
         down = self._mean(self.samples[Step.DUCK])
         if down is not None:
             drop = max(0.0, (down[1] - ny) / nw)
             if drop > 0.05:
-                p.duck_threshold = max(0.14, drop * TRIGGER_FRACTION)
+                raw = drop * TRIGGER_FRACTION
+                p.duck_threshold = max(0.14, raw)
+                if raw < 0.14:
+                    weak.append("duck")
+            else:
+                weak.append("duck")
 
+        p.weak = bool(weak)
+        self.weak_steps = weak
         self.profile = p

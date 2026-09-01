@@ -112,7 +112,27 @@ def main():
     _, j2, d2 = feed(det, 0.50, 0.42 + 0.20 * 0.60, n=30)
     check("crouching never emits a jump", j2 == 0 and d2 == 1, f"jump={j2} duck={d2}")
 
-    print("\n8. repeated camera frames are ignored, not re-filtered")
+    print("\n8. a drifted posture must not disable jumping")
+    # The real failure this guards: a session where the player stood lower in
+    # frame than during calibration. Every frame then read as a deep crouch,
+    # the detector latched into 'down', and jump -- which is only tested from
+    # neutral -- could never fire again. 4 jumps in 106 seconds of play.
+    det = GestureDetector(prof)
+    DRIFT = 0.64 * 0.20                      # 0.64 shoulder-widths lower
+    feed(det, 0.50, 0.42 + DRIFT, n=150)     # ~5s standing at the new posture
+    check("baseline relearns the drifted posture",
+          abs(det.state.rise) < 0.10, f"rise={det.state.rise:+.3f}")
+    _, jumps, _ = feed(det, 0.50, 0.42 + DRIFT - 0.20 * 0.45, n=40)
+    check("jump still fires after a 0.64sw posture drift", jumps == 1,
+          f"jumps={jumps}")
+
+    print("\n9. implausible landmarks are discarded")
+    det = GestureDetector(prof)
+    feed(det, 0.50, 0.42)
+    st = det.update(frame(0.50, 0.42, width=0.004), DT)   # collapsed shoulders
+    check("a collapsed shoulder pair is not trusted", st.tracked is False)
+
+    print("\n10. repeated camera frames are ignored, not re-filtered")
     det = GestureDetector(prof)
     feed(det, 0.50, 0.42)
     stale = frame(0.50, 0.42 - 0.20 * 0.45)
@@ -121,7 +141,7 @@ def main():
     check("a repeated frame never re-fires a gesture", repeats == 0,
           f"first={first.jump} repeats={repeats}")
 
-    print("\n9. lost tracking is reported, not guessed at")
+    print("\n11. lost tracking is reported, not guessed at")
     det = GestureDetector(prof)
     feed(det, 0.42, 0.42)
     st = det.update(None, DT)

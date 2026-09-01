@@ -12,8 +12,8 @@ import os
 import time
 
 LOG_PATH = "/tmp/dash_catalyst_gestures.csv"
-HEADER = ("t_ms,tracked,lean_sw,rise_sw,rise_vel_sw_s,zone,"
-          "jump,duck,cam_frames,detections\n")
+HEADER = ("t_ms,tracked,lean_sw,rise_sw,rise_vel_sw_s,base_rise_sw,"
+          "raw_mx,raw_my,shoulder_w,zone,jump,duck,cam_frames,detections\n")
 FLUSH_EVERY = 30
 
 
@@ -47,13 +47,22 @@ class GestureLog:
             f"calibrated={profile.calibrated}  {extra}\n")
         self._fh.write(HEADER)
 
-    def write(self, state, cam_frames, detections):
+    def write(self, state, cam_frames, detections, frame=None):
         if not self.enabled or self._fh is None:
             return
         t_ms = (time.time() - self._t0) * 1000.0
+        # Raw landmark position is logged alongside the derived signals so a
+        # session can be replayed faithfully through changed detector logic.
+        if frame is not None:
+            from vision.pose_tracker import L_SHOULDER, R_SHOULDER
+            mx, my = frame.midpoint(L_SHOULDER, R_SHOULDER)
+            raw = f"{mx:.4f},{my:.4f},{frame.shoulder_width:.4f}"
+        else:
+            raw = ",,"
         self._fh.write(
             f"{t_ms:.0f},{int(state.tracked)},{state.lean:.4f},"
-            f"{state.rise:.4f},{state.rise_vel:.3f},{state.lane_zone},"
+            f"{state.rise:.4f},{state.rise_vel:.3f},{state.base_rise:.4f},"
+            f"{raw},{state.lane_zone},"
             f"{int(state.jump)},{int(state.duck)},{cam_frames},{detections}\n")
         self._rows += 1
         self._pending += 1

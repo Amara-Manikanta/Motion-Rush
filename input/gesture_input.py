@@ -40,6 +40,7 @@ class GestureInput(InputManager):
         self._zone = 0
         self.state = None
         self.calibrating = True
+        self.pending_notice = None
         self.log = GestureLog(enabled=log)
         self._logged_header = False
 
@@ -72,7 +73,7 @@ class GestureInput(InputManager):
                                     self.tracker.reported_fps)
             self._logged_header = True
         seen, hits = self.tracker.stats()
-        self.log.write(state, seen, hits)
+        self.log.write(state, seen, hits, frame)
 
         if not state.tracked:
             return ()
@@ -109,6 +110,7 @@ class GestureInput(InputManager):
             f"vel {s.rise_vel:+.2f}sw/s",
             f"camera {self.tracker.reported_fps:.0f}fps  log {self.log.path}",
             f"thresholds: {prof.describe()}",
+            f"baseline rise {s.base_rise:+.2f}sw",
         )
 
     def close(self):
@@ -130,6 +132,14 @@ class GestureInput(InputManager):
         self.detector.set_profile(self.calibrator.profile)
         self._zone = 0
         self.log.note(f"calibration done: {self.calibrator.profile.describe()}")
+        self.pending_notice = None
+        if self.calibrator.profile.weak:
+            steps = ", ".join(self.calibrator.weak_steps)
+            self.pending_notice = (
+                f"Calibration was weak ({steps}).\n"
+                f"Thresholds fell back to their minimums, which makes detection "
+                f"unreliable.\nPress K to redo it, and make the movements big "
+                f"and deliberate.")
 
     # -- preview ------------------------------------------------------------
 

@@ -230,6 +230,10 @@ class GameManager:
             self.calib_screen.update(dt)
             if not getattr(self.input, "calibrating", False):
                 self.state = State.MENU
+                pending = getattr(self.input, "pending_notice", None)
+                if pending:
+                    self.show_notice(pending, 9.0)
+                    self.input.pending_notice = None
             return
 
         if self.state is State.GAME_OVER and self.death_timer > 0.0:
