@@ -23,6 +23,7 @@ KEYMAP = {
     pygame.K_g: Action.SWITCH_INPUT,
     pygame.K_F11: Action.TOGGLE_FULLSCREEN,
     pygame.K_m: Action.TOGGLE_MODE,
+    pygame.K_TAB: Action.SKIP,
     pygame.K_f: Action.TOGGLE_FULLSCREEN,
     pygame.K_k: Action.RECALIBRATE,
 }

@@ -27,8 +27,15 @@ DEATH_FREEZE = 0.75          # seconds of slow-motion before the game-over card
 MILESTONE_STEP = 500
 
 
+#: A camera player who walks out of shot should not be fed obstacles they
+#: cannot see. These are the hold-off times before pausing and before resuming.
+LOST_PLAYER_PAUSE = 0.7
+FOUND_PLAYER_RESUME = 0.3
+
+
 class State(Enum):
     CALIBRATING = "calibrating"
+    NO_PLAYER = "no_player"
     MENU = "menu"
     PLAYING = "playing"
     PAUSED = "paused"
@@ -90,6 +97,8 @@ class GameManager:
         self.running = True
         self.request_input_switch = False
         self.request_fullscreen_toggle = False
+        self.lost_for = 0.0
+        self.found_for = 0.0
         self.notice = ""
         self.notice_timer = 0.0
 
@@ -165,7 +174,11 @@ class GameManager:
             return
 
         if self.state is State.CALIBRATING:
-            if action is Action.START:
+            if action in (Action.START, Action.JUMP):
+                begin = getattr(self.input, "begin_calibration_step", None)
+                if begin is not None:
+                    begin()
+            elif action is Action.SKIP:
                 skip = getattr(self.input, "skip_calibration", None)
                 if skip is not None:
                     skip()
@@ -244,6 +257,23 @@ class GameManager:
             self.track.update(slow, self.run.speed * 0.35)
             self.spawner.update(slow, self.run.speed * 0.35)
             return
+
+        # Auto-pause on an empty frame. Only meaningful for a camera source;
+        # a keyboard source never reports visibility at all.
+        visible = getattr(self.input, "player_visible", None)
+        if visible is not None and self.state in (State.PLAYING, State.NO_PLAYER):
+            if visible:
+                self.found_for += dt
+                self.lost_for = 0.0
+            else:
+                self.lost_for += dt
+                self.found_for = 0.0
+
+            if self.state is State.PLAYING and self.lost_for >= LOST_PLAYER_PAUSE:
+                self.state = State.NO_PLAYER
+            elif (self.state is State.NO_PLAYER
+                  and self.found_for >= FOUND_PLAYER_RESUME):
+                self.state = State.PLAYING
 
         if self.state is not State.PLAYING:
             return
@@ -335,7 +365,8 @@ class GameManager:
 
         self.painter.end_frame()
 
-        if self.state in (State.PLAYING, State.PAUSED) or self.death_timer > 0.0:
+        if (self.state in (State.PLAYING, State.PAUSED, State.NO_PLAYER)
+                or self.death_timer > 0.0):
             glow = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
             self.hud.draw(surface, glow, self.run)
             surface.blit(glow, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
@@ -352,6 +383,9 @@ class GameManager:
                     getattr(self.input, "camera_status", "ok"))
         elif self.state is State.MENU:
             self.menu.draw_title(surface, overlay_glow, self.input.name, self.best_score)
+        elif self.state is State.NO_PLAYER:
+            self.menu.draw_no_player(surface, overlay_glow,
+                                     getattr(self.input, "framing", "unknown"))
         elif self.state is State.PAUSED:
             self.menu.draw_paused(surface, overlay_glow)
         elif self.state is State.GAME_OVER and self.death_timer <= 0.0:
@@ -362,6 +396,13 @@ class GameManager:
         if (self.show_camera and self.camera_preview is not None
                 and self.state is not State.CALIBRATING):
             self._draw_camera_pip(surface)
+
+        framing = getattr(self.input, "framing", "unknown")
+        if (self.state is State.PLAYING and framing in ("too_close", "too_far")):
+            from ui.fonts import draw_text
+            msg = ("STEP BACK" if framing == "too_close" else "STEP CLOSER")
+            draw_text(surface, msg, 22, self.theme["danger"],
+                      center=(C.SCREEN_W // 2, 40), bold=True)
 
         if self.notice_timer > 0.0 and self.notice:
             self._draw_notice(surface)

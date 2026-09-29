@@ -175,6 +175,39 @@ def main():
     check("track reset", gm.track.distance == 0.0)
     check("obstacles cleared", len(gm.spawner.active_obstacles()) == 0)
 
+    print("\n8b. the run auto-pauses when the player leaves the frame")
+
+    class FakeCamera(KeyboardInput):
+        name = "camera"
+        def __init__(self):
+            self.visible = True
+            self.framing = "good"
+        @property
+        def player_visible(self):
+            return self.visible
+
+    cam = FakeCamera()
+    gm = new_game(); gm.input = cam; gm.start_run()
+    for _ in range(30):
+        gm.update(DT)
+    check("plays normally while visible", gm.state is State.PLAYING)
+    cam.visible = False
+    for _ in range(60):                       # 1s away
+        gm.update(DT)
+    check("pauses once the player is gone", gm.state is State.NO_PLAYER)
+    dist_before = gm.run.distance
+    for _ in range(60):
+        gm.update(DT)
+    check("the run does not advance while paused",
+          gm.run.distance == dist_before, f"distance={gm.run.distance:.1f}")
+    cam.visible = True
+    for _ in range(40):
+        gm.update(DT)
+    check("resumes on its own when the player returns",
+          gm.state is State.PLAYING)
+    gm.draw()
+    check("the no-player screen renders", True)
+
     print("\n9. rendering does not raise in any state")
     gm = new_game()
     gm.draw()                                   # menu

@@ -27,8 +27,10 @@ PREVIEW_POINTS = (NOSE, L_SHOULDER, R_SHOULDER, L_HIP, R_HIP)
 class GestureInput(InputManager):
     name = "camera"
 
-    def __init__(self, camera_index=0, preview=True, log=True):
-        self.tracker = PoseTracker(camera_index=camera_index)
+    def __init__(self, camera_index=0, preview=True, log=True, mirror=True,
+                 capture_size=(1280, 960)):
+        self.tracker = PoseTracker(camera_index=camera_index, mirror=mirror,
+                                   capture_size=capture_size)
         self.tracker.start()
 
         self.calibrator = Calibrator()
@@ -58,7 +60,11 @@ class GestureInput(InputManager):
         frame = self.tracker.latest()
 
         if self.calibrating:
-            self.calibrator.update(dt, frame)
+            # Framing gates the sequence: a body that is present but far too
+            # close or too far produces landmarks not worth calibrating from.
+            from vision.gesture_detector import framing_of
+            ok = frame is not None and framing_of(frame.shoulder_width) == "good"
+            self.calibrator.update(dt, frame, ok)
             if self.calibrator.done:
                 self.finish_calibration()
             self._refresh_preview(frame)
@@ -94,6 +100,14 @@ class GestureInput(InputManager):
     def camera_status(self):
         return self.tracker.status
 
+    @property
+    def player_visible(self) -> bool:
+        return bool(self.state and self.state.tracked)
+
+    @property
+    def framing(self) -> str:
+        return self.state.framing if self.state else "unknown"
+
     def debug_lines(self):
         seen, hits = self.tracker.stats()
         prof = self.detector.profile
@@ -108,9 +122,11 @@ class GestureInput(InputManager):
             f"tracked {s.tracked}  zone {s.lane_zone:+d} (raw {s.raw_zone:+d})",
             f"lean {s.lean:+.2f}sw  rise {s.rise:+.2f}sw  "
             f"vel {s.rise_vel:+.2f}sw/s",
-            f"camera {self.tracker.reported_fps:.0f}fps  log {self.log.path}",
+            f"camera {self.tracker.actual_size[0]}x{self.tracker.actual_size[1]}"
+            f" @ {self.tracker.reported_fps:.0f}fps",
             f"thresholds: {prof.describe()}",
             f"baseline rise {s.base_rise:+.2f}sw",
+            f"shoulder width {s.width:.3f}  framing {s.framing}",
         )
 
     def close(self):
@@ -122,6 +138,10 @@ class GestureInput(InputManager):
     def restart_calibration(self):
         self.calibrator.reset()
         self.calibrating = True
+
+    def begin_calibration_step(self):
+        """Start the current step immediately (the player says they're ready)."""
+        self.calibrator.begin_step()
 
     def skip_calibration(self):
         self.calibrator.skip()

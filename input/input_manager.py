@@ -22,6 +22,7 @@ class Action(Enum):
     SWITCH_INPUT = "switch_input"
     TOGGLE_FULLSCREEN = "toggle_fullscreen"
     TOGGLE_MODE = "toggle_mode"
+    SKIP = "skip"
 
 
 class InputManager:

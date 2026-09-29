@@ -40,7 +40,7 @@ class Menu:
                   t["text_dim"], center=(cx, 316))
 
         rows = [
-            ("MOVE", "A / D   or   ← →"),
+            ("MOVE", "A / D  or  ← →    (camera: lean and HOLD)"),
             ("JUMP", "W  /  ↑  /  SPACE"),
             ("DUCK", "S  /  ↓"),
             ("PAUSE", "P"),
@@ -107,6 +107,25 @@ class Menu:
                   center=(cx, C.SCREEN_H - 96), bold=True, glow_surface=glow)
 
     # -- pause --------------------------------------------------------------
+
+    def draw_no_player(self, surface, glow, framing="unknown"):
+        t = self.theme
+        _scrim(surface, 175)
+        cx = C.SCREEN_W // 2
+        pulse = 0.6 + 0.4 * math.sin(self.t * 3.2)
+        draw_text(surface, "PAUSED", 56,
+                  tuple(int(c * pulse) for c in t["text"]),
+                  center=(cx, C.SCREEN_H // 2 - 70), bold=True, glow_surface=glow)
+        draw_text(surface, "step back into the camera's view", 24, t["accent"],
+                  center=(cx, C.SCREEN_H // 2 - 10))
+        hint = {
+            "too_close": "you are too close — take a step back",
+            "too_far": "you are too far — move closer",
+        }.get(framing, "stand so your head and hips are both in frame")
+        draw_text(surface, hint, 19, t["text_dim"],
+                  center=(cx, C.SCREEN_H // 2 + 34))
+        draw_text(surface, "the run resumes on its own", 17, t["text_dim"],
+                  center=(cx, C.SCREEN_H // 2 + 74))
 
     def draw_paused(self, surface, glow):
         t = self.theme

@@ -37,7 +37,9 @@ class CalibrationScreen:
         self._draw_step(surface, glow, calibrator, cx)
         self._draw_dots(surface, calibrator, cx)
 
-        draw_text(surface, "SPACE  skip and use defaults     •     ESC  quit",
+        draw_text(surface,
+                  "SPACE  I'm ready, start now     •     "
+                  "TAB  skip     •     ESC  quit",
                   16, t["text_dim"], center=(cx, C.SCREEN_H - 34))
 
     # -- pieces -------------------------------------------------------------
@@ -90,6 +92,23 @@ class CalibrationScreen:
         draw_text(surface, step.value, 40, t["text"], center=(cx, y),
                   bold=True, glow_surface=glow)
 
+        if calibrator.waiting:
+            # Nothing advances until the player is actually there.
+            draw_text(surface, "waiting for you to get into frame", 20,
+                      t["accent"], center=(cx, y + 56))
+            w, h = 300, 8
+            x0 = cx - w // 2
+            yy = y + 84
+            pygame.draw.rect(surface, (36, 24, 66), (x0, yy, w, h),
+                             border_radius=4)
+            fill = int(w * calibrator.ready_fraction)
+            if fill:
+                pygame.draw.rect(surface, t["accent"], (x0, yy, fill, h),
+                                 border_radius=4)
+            draw_text(surface, "or press SPACE when you are ready", 15,
+                      t["text_dim"], center=(cx, yy + 26))
+            return
+
         if not calibrator.sampling:
             n = math.ceil(calibrator.countdown)
             pulse = 1.0 - (calibrator.countdown % 1.0)
@@ -123,5 +142,5 @@ class CalibrationScreen:
             done = ORDER.index(s) < calibrator.index
             active = s is calibrator.step
             col = t["player"] if done else (t["accent"] if active else (60, 46, 96))
-            pygame.draw.circle(surface, col, (start + i * gap, 618),
+            pygame.draw.circle(surface, col, (start + i * gap, 648),
                                8 if active else 6)

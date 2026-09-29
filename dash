@@ -1,0 +1,43 @@
+#!/bin/bash
+# Dash Catalyst launcher.
+#
+#   dash                 play (keyboard)
+#   dash camera [N]      play with body control, optionally on camera index N
+#   dash setup [N]       live framing helper — aim the camera before playing
+#   dash cameras         list attached cameras (find your iPhone's index)
+#   dash log [path]      summarise the last gesture session
+#   dash test            run the test suites
+#   dash classic         play at arcade pace instead of exercise pace
+#
+# Anything else is passed straight through to main.py, e.g.
+#   dash --gesture --debug --camera-index 1
+set -e
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PY="$HERE/.venv/bin/python"
+
+if [ ! -x "$PY" ]; then
+  echo "virtualenv missing at $PY" >&2
+  echo "create it with:  python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt" >&2
+  exit 1
+fi
+
+cd "$HERE"
+cmd="${1:-play}"
+case "$cmd" in
+  play)      shift || true; exec "$PY" main.py "$@" ;;
+  camera)    shift || true
+             idx="${1:-0}"; [[ "$idx" =~ ^[0-9]+$ ]] && shift || idx=0
+             exec "$PY" main.py --gesture --camera --camera-index "$idx" "$@" ;;
+  setup)     shift || true
+             idx="${1:-0}"; [[ "$idx" =~ ^[0-9]+$ ]] && shift || idx=0
+             exec "$PY" main.py --camera-check --camera-index "$idx" "$@" ;;
+  cameras)   exec "$PY" main.py --list-cameras ;;
+  classic)   shift || true; exec "$PY" main.py --mode classic "$@" ;;
+  log)       shift || true; exec "$PY" tools/analyze_log.py "$@" ;;
+  test)      "$PY" -m tests.test_gameplay
+             "$PY" -m tests.test_gestures
+             exec "$PY" -m tests.bench_latency ;;
+  -h|--help|help)
+             awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0" ;;
+  *)         exec "$PY" main.py "$@" ;;
+esac

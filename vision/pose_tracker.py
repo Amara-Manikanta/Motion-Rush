@@ -65,7 +65,7 @@ class PoseFrame:
 
 class PoseTracker:
     def __init__(self, camera_index=0, model_path=MODEL_PATH,
-                 capture_size=(640, 480), preview_size=(224, 168),
+                 capture_size=(1280, 960), preview_size=(224, 168),
                  mirror=True):
         if not os.path.exists(model_path):
             raise ModelMissing()
@@ -90,6 +90,7 @@ class PoseTracker:
         self.capture_size = capture_size
         self.cap = None
         self.reported_fps = 0.0
+        self.actual_size = (0, 0)
         self.status = "starting"        # starting | ok | denied
 
         options = PoseLandmarkerOptions(
@@ -141,6 +142,10 @@ class PoseTracker:
         if not cap.isOpened():
             cap.release()
             return False
+        # 4:3 by default rather than 16:9. A widescreen stream is a vertical
+        # crop of the same sensor, and the limiting factor when framing a
+        # standing person is height, not width -- this buys back about a third
+        # of the vertical field of view for free.
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.capture_size[0])
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.capture_size[1])
         # A capture buffer is pure input lag: by the time a queued frame is
@@ -151,6 +156,8 @@ class PoseTracker:
         cap.set(cv2.CAP_PROP_FPS, 60)
         self.cap = cap
         self.reported_fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+        self.actual_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         return True
 
     def _loop(self):
